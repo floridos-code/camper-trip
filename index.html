@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Camper Trip</title>
+
+<!-- iPhone: "Zum Home-Bildschirm" -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Camper Trip">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23245b4d'/%3E%3Ctext x='50' y='66' font-size='55' text-anchor='middle'%3E%F0%9F%9A%90%3C/text%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --accent:#245b4d;
+    --accent-light:#3d8a73;
+    --bg:#f4f2ee;
+    --card:#ffffff;
+    --text:#1c231f;
+    --muted:#6b756f;
+    --route:#245b4d;
+    --sight:#c9752b;
+    --camper:#2b5fc9;
+    --danger:#c0392b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,sans-serif;background:var(--bg);color:var(--text);}
+  #map{position:fixed;inset:0;z-index:1;}
+
+  /* Top bar */
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:500;
+    padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;
+    display:flex;gap:8px;pointer-events:none;
+  }
+  #topbar > *{pointer-events:auto;}
+  #searchBox{
+    flex:1;background:var(--card);border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.15);
+    display:flex;align-items:center;padding:0 12px;height:44px;
+  }
+  #searchInput{border:none;outline:none;flex:1;font-size:15px;background:transparent;}
+  #menuBtn{
+    width:44px;height:44px;border-radius:14px;background:var(--card);border:none;
+    box-shadow:0 2px 10px rgba(0,0,0,.15);font-size:18px;
+  }
+
+  /* Setup banner */
+  #setupBanner{
+    position:fixed;left:12px;right:12px;z-index:600;top:calc(env(safe-area-inset-top) + 62px);
+    background:#fff3cd;border:1px solid #f0c36d;color:#7a5b00;border-radius:12px;
+    padding:10px 12px;font-size:13px;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.1);display:none;
+  }
+
+  /* Floating action button */
+  #fab{
+    position:fixed;right:16px;z-index:500;bottom:calc(env(safe-area-inset-bottom) + 24px);
+    width:58px;height:58px;border-radius:50%;background:var(--accent);color:#fff;border:none;
+    font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.3);
+  }
+
+  /* List drawer */
+  #drawerHandle{
+    position:fixed;left:0;right:0;bottom:0;z-index:400;
+    background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -2px 16px rgba(0,0,0,.2);
+    max-height:78vh;transform:translateY(calc(100% - 84px));transition:transform .28s ease;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  #drawerHandle.open{transform:translateY(0);}
+  #drawerGrip{width:40px;height:5px;background:#d8d8d8;border-radius:3px;margin:10px auto 0;}
+  #drawerTabs{display:flex;gap:6px;padding:14px 14px 8px;}
+  .tabBtn{flex:1;border:none;background:var(--bg);color:var(--muted);padding:9px 4px;border-radius:10px;font-size:13px;font-weight:600;}
+  .tabBtn.active{background:var(--accent);color:#fff;}
+  #drawerList{overflow-y:auto;max-height:calc(78vh - 90px);padding:4px 14px 20px;}
+
+  .item{background:var(--bg);border-radius:12px;padding:10px 12px;margin-bottom:8px;position:relative;}
+  .item .badge{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;}
+  .item h4{margin:0 0 3px;font-size:15px;}
+  .item p{margin:0;font-size:12.5px;color:var(--muted);}
+  .item .itemActions{position:absolute;right:8px;top:8px;display:flex;gap:6px;}
+  .item .itemActions button{border:none;background:none;font-size:16px;padding:2px 4px;color:var(--muted);}
+  .item .orderBtns{display:inline-flex;gap:4px;margin-top:6px;}
+  .item .orderBtns button{border:none;background:#e5e1d8;border-radius:6px;font-size:12px;padding:3px 8px;}
+  #emptyMsg{color:var(--muted);font-size:13px;text-align:center;padding:20px 0;}
+
+  /* Modal (add/edit form) */
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:700;display:none;align-items:flex-end;}
+  #formSheet{
+    background:var(--card);width:100%;border-radius:20px 20px 0 0;padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);
+    max-height:85vh;overflow-y:auto;
+  }
+  #formSheet h3{margin:0 0 12px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;font-weight:600;}
+  .field input, .field textarea{
+    width:100%;border:1px solid #ddd8cd;border-radius:10px;padding:10px 11px;font-size:15px;font-family:inherit;background:#fbfaf7;
+  }
+  .field textarea{resize:vertical;min-height:56px;}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+  #formActions{display:flex;gap:10px;margin-top:6px;}
+  #formActions button{flex:1;padding:12px;border-radius:12px;border:none;font-size:15px;font-weight:600;}
+  #saveBtn{background:var(--accent);color:#fff;}
+  #cancelBtn{background:var(--bg);color:var(--text);}
+  #deleteBtn{background:#fdecea;color:var(--danger);}
+
+  /* Placement hint toast */
+  #placeToast{
+    position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 60px);transform:translateX(-50%);
+    background:var(--text);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;z-index:600;display:none;
+  }
+
+  .leaflet-div-icon{background:none;border:none;}
+  .pin{font-size:26px;line-height:1;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <div id="searchBox">
+    <span style="opacity:.5;margin-right:6px;">🔍</span>
+    <input id="searchInput" placeholder="Ort suchen …" />
+  </div>
+  <button id="menuBtn" onclick="toggleDrawer(true)">☰</button>
+</div>
+
+<div id="setupBanner">
+  ⚠️ Firebase ist noch nicht konfiguriert. Trage deine Konfiguration im Code unter <code>firebaseConfig</code> ein (siehe README), damit deine Spots geräteübergreifend gespeichert werden. Bis dahin wird nichts dauerhaft gesichert.
+</div>
+
+<div id="placeToast"></div>
+
+<button id="fab" onclick="openAddMenu()">＋</button>
+
+<div id="drawerHandle">
+  <div id="drawerGrip" onclick="toggleDrawer()"></div>
+  <div id="drawerTabs">
+    <button class="tabBtn active" data-type="route" onclick="setTab('route')">🧭 Route</button>
+    <button class="tabBtn" data-type="sight" onclick="setTab('sight')">📍 Sightseeing</button>
+    <button class="tabBtn" data-type="camper" onclick="setTab('camper')">🚐 Camper-Spots</button>
+  </div>
+  <div id="drawerList"></div>
+</div>
+
+<div id="overlay">
+  <div id="formSheet"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot, doc,
+  updateDoc, deleteDoc, query, orderBy, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* =========================================================
+   1) HIER DEINE FIREBASE-KONFIGURATION EINFÜGEN
+   (siehe README.md, Schritt 2)
+========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDzUiZRL6a9j3ePhaIWd_rgJ79tG70nhZU",
+  authDomain: "camper-trip.firebaseapp.com",
+  projectId: "camper-trip",
+  storageBucket: "camper-trip.firebasestorage.app",
+  messagingSenderId: "657383651218",
+  appId: "1:657383651218:web:f5a49bfb531dabda52334b"
+};
+
+const isConfigured = firebaseConfig.apiKey !== "DEIN_API_KEY";
+if (!isConfigured) document.getElementById('setupBanner').style.display = 'block';
+
+let db, spotsCol;
+if (isConfigured) {
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  spotsCol = collection(db, "spots");
+}
+
+/* ---------- Map ---------- */
+const map = L.map('map', { zoomControl:false }).setView([48.1372, 11.5756], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap-Mitwirkende', maxZoom: 19
+}).addTo(map);
+L.control.zoom({ position:'bottomleft' }).addTo(map);
+
+const markersLayer = L.layerGroup().addTo(map);
+let routeLine = null;
+
+const ICONS = { route:'🧭', sight:'📍', camper:'🚐' };
+const COLORS = { route:'#245b4d', sight:'#c9752b', camper:'#2b5fc9' };
+
+function pinIcon(type){
+  return L.divIcon({ className:'leaflet-div-icon', html:`<div class="pin">${ICONS[type]}</div>`, iconSize:[30,30], iconAnchor:[15,26] });
+}
+
+/* ---------- Local state (falls Firebase nicht konfiguriert: lokaler Speicher) ---------- */
+let spots = [];
+
+function loadLocal(){ try{ return JSON.parse(localStorage.getItem('camperSpots')||'[]'); }catch(e){ return []; } }
+function saveLocal(){ localStorage.setItem('camperSpots', JSON.stringify(spots)); }
+
+async function addSpot(spot){
+  spot.createdAt = Date.now();
+  if (isConfigured){
+    await addDoc(spotsCol, spot);
+  } else {
+    spot.id = 'local_' + Date.now();
+    spots.push(spot); saveLocal(); render();
+  }
+}
+async function updateSpot(id, data){
+  if (isConfigured){
+    await updateDoc(doc(db,'spots',id), data);
+  } else {
+    const s = spots.find(s=>s.id===id); Object.assign(s, data); saveLocal(); render();
+  }
+}
+async function deleteSpot(id){
+  if (isConfigured){
+    await deleteDoc(doc(db,'spots',id));
+  } else {
+    spots = spots.filter(s=>s.id!==id); saveLocal(); render();
+  }
+}
+
+if (isConfigured){
+  onSnapshot(spotsCol, (snap)=>{
+    spots = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    render();
+  });
+} else {
+  spots = loadLocal();
+  render();
+}
+
+/* ---------- Rendering ---------- */
+let activeTab = 'route';
+
+function render(){
+  markersLayer.clearLayers();
+  if (routeLine){ map.removeLayer(routeLine); routeLine=null; }
+
+  spots.forEach(s=>{
+    const m = L.marker([s.lat,s.lng], { icon: pinIcon(s.type) }).addTo(markersLayer);
+    m.bindPopup(`<b>${escapeHtml(s.name||'Ohne Namen')}</b>`);
+    m.on('click', ()=> openEditForm(s));
+  });
+
+  const routePts = spots.filter(s=>s.type==='route').sort((a,b)=>(a.order??0)-(b.order??0));
+  if (routePts.length > 1){
+    routeLine = L.polyline(routePts.map(p=>[p.lat,p.lng]), { color: COLORS.route, weight:4, opacity:.85, dashArray:'2 8' }).addTo(map);
+  }
+
+  renderList();
+}
+
+function renderList(){
+  const list = document.getElementById('drawerList');
+  const items = spots.filter(s=>s.type===activeTab)
+    .sort((a,b)=> activeTab==='route' ? (a.order??0)-(b.order??0) : (a.createdAt??0)-(b.createdAt??0));
+
+  if (items.length === 0){
+    list.innerHTML = `<div id="emptyMsg">Noch keine Einträge. Tippe unten rechts auf ＋.</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map((s,i)=>{
+    let details = s.notes ? `<p>${escapeHtml(s.notes)}</p>` : '';
+    if (s.type==='camper'){
+      const nights = nightsBetween(s.checkIn, s.checkOut);
+      details = `<p>📅 ${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)}${nights?` · ${nights} Nächte`:''}${s.price?` · ${escapeHtml(s.price)}`:''}</p>` + details;
+    }
+    let orderBtns = '';
+    if (activeTab==='route'){
+      orderBtns = `<div class="orderBtns">
+        <button onclick="moveOrder('${s.id}',-1)">↑</button>
+        <button onclick="moveOrder('${s.id}',1)">↓</button>
+      </div>`;
+    }
+    return `<div class="item">
+      <div class="itemActions">
+        <button onclick="centerOn(${s.lat},${s.lng})">🎯</button>
+        <button onclick="editById('${s.id}')">✏️</button>
+      </div>
+      <span class="badge" style="background:${COLORS[s.type]}"></span>
+      <h4 style="display:inline">${escapeHtml(s.name||'Ohne Namen')}</h4>
+      ${details}
+      ${orderBtns}
+    </div>`;
+  }).join('');
+}
+
+window.centerOn = (lat,lng)=>{ map.setView([lat,lng], 14); toggleDrawer(false); };
+window.editById = (id)=>{ const s = spots.find(x=>x.id===id); if (s) openEditForm(s); };
+window.moveOrder = async (id, dir)=>{
+  const routePts = spots.filter(s=>s.type==='route').sort((a,b)=>(a.order??0)-(b.order??0));
+  const idx = routePts.findIndex(s=>s.id===id);
+  const swapIdx = idx+dir;
+  if (swapIdx<0 || swapIdx>=routePts.length) return;
+  const a = routePts[idx], b = routePts[swapIdx];
+  const ao = a.order ?? idx, bo = b.order ?? swapIdx;
+  await updateSpot(a.id, { order: bo });
+  await updateSpot(b.id, { order: ao });
+};
+
+function nightsBetween(a,b){
+  if(!a||!b) return null;
+  const d = (new Date(b) - new Date(a)) / 86400000;
+  return d>0 ? Math.round(d) : null;
+}
+function fmtDate(d){ if(!d) return '–'; const dt=new Date(d); return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- Drawer / Tabs ---------- */
+window.setTab = (t)=>{
+  activeTab = t;
+  document.querySelectorAll('.tabBtn').forEach(b=> b.classList.toggle('active', b.dataset.type===t));
+  renderList();
+};
+window.toggleDrawer = (force)=>{
+  const el = document.getElementById('drawerHandle');
+  if (typeof force === 'boolean') el.classList.toggle('open', force);
+  else el.classList.toggle('open');
+};
+
+/* ---------- Add flow ---------- */
+let pendingType = null;
+
+window.openAddMenu = ()=>{
+  const choice = prompt("Was möchtest du hinzufügen?\n1 = Routenpunkt\n2 = Sightseeing-Spot\n3 = Camper-Spot\n\nZahl eingeben:");
+  const map3 = { '1':'route', '2':'sight', '3':'camper' };
+  if (map3[choice]){
+    pendingType = map3[choice];
+    showToast(`Tippe auf die Karte, um "${labelFor(pendingType)}" zu platzieren`);
+  }
+};
+
+function labelFor(t){ return t==='route' ? 'Routenpunkt' : t==='sight' ? 'Sightseeing-Spot' : 'Camper-Spot'; }
+
+function showToast(msg){
+  const t = document.getElementById('placeToast');
+  t.textContent = msg; t.style.display='block';
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=> t.style.display='none', 3500);
+}
+
+map.on('click', (e)=>{
+  if (!pendingType) return;
+  const t = pendingType; pendingType = null;
+  document.getElementById('placeToast').style.display='none';
+  openNewForm(t, e.latlng.lat, e.latlng.lng);
+});
+
+/* ---------- Form (add / edit) ---------- */
+function openNewForm(type, lat, lng){
+  renderForm({ type, lat, lng, isNew:true });
+}
+function openEditForm(spot){
+  renderForm({ ...spot, isNew:false });
+  toggleDrawer(false);
+}
+
+function renderForm(s){
+  const overlay = document.getElementById('overlay');
+  const sheet = document.getElementById('formSheet');
+  overlay.style.display = 'flex';
+
+  let extraFields = '';
+  if (s.type === 'camper'){
+    extraFields = `
+      <div class="row2">
+        <div class="field"><label>Check-in</label><input type="date" id="f_checkin" value="${s.checkIn||''}"></div>
+        <div class="field"><label>Check-out</label><input type="date" id="f_checkout" value="${s.checkOut||''}"></div>
+      </div>
+      <div class="field"><label>Preis (optional)</label><input id="f_price" value="${s.price||''}" placeholder="z.B. 22€/Nacht"></div>`;
+  }
+
+  sheet.innerHTML = `
+    <h3>${ICONS[s.type]} ${labelFor(s.type)} ${s.isNew?'hinzufügen':'bearbeiten'}</h3>
+    <div class="field"><label>Name</label><input id="f_name" value="${(s.name||'').replace(/"/g,'&quot;')}" placeholder="z.B. Plitvicer Seen"></div>
+    ${extraFields}
+    <div class="field"><label>Notizen</label><textarea id="f_notes" placeholder="Details, Tipps, Anfahrt …">${s.notes||''}</textarea></div>
+    <div id="formActions">
+      ${s.isNew ? '' : '<button id="deleteBtn">Löschen</button>'}
+      <button id="cancelBtn">Abbrechen</button>
+      <button id="saveBtn">Speichern</button>
+    </div>
+  `;
+
+  document.getElementById('cancelBtn').onclick = closeForm;
+  overlay.onclick = (ev)=>{ if (ev.target===overlay) closeForm(); };
+
+  if (!s.isNew){
+    document.getElementById('deleteBtn').onclick = async ()=>{
+      if (confirm('Diesen Eintrag wirklich löschen?')){
+        await deleteSpot(s.id); closeForm();
+      }
+    };
+  }
+
+  document.getElementById('saveBtn').onclick = async ()=>{
+    const data = {
+      name: document.getElementById('f_name').value.trim() || 'Ohne Namen',
+      notes: document.getElementById('f_notes').value.trim(),
+    };
+    if (s.type === 'camper'){
+      data.checkIn = document.getElementById('f_checkin').value;
+      data.checkOut = document.getElementById('f_checkout').value;
+      data.price = document.getElementById('f_price').value.trim();
+    }
+    if (s.isNew){
+      data.type = s.type; data.lat = s.lat; data.lng = s.lng;
+      if (s.type === 'route'){
+        const routeCount = spots.filter(x=>x.type==='route').length;
+        data.order = routeCount;
+      }
+      await addSpot(data);
+    } else {
+      await updateSpot(s.id, data);
+    }
+    closeForm();
+  };
+}
+function closeForm(){ document.getElementById('overlay').style.display='none'; }
+
+/* ---------- Search (OpenStreetMap Nominatim) ---------- */
+const searchInput = document.getElementById('searchInput');
+searchInput.addEventListener('keydown', async (e)=>{
+  if (e.key !== 'Enter') return;
+  const q = searchInput.value.trim();
+  if (!q) return;
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (data && data[0]){
+      const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      map.setView([lat,lng], 13);
+      if (pendingType){
+        const t = pendingType; pendingType = null;
+        document.getElementById('placeToast').style.display='none';
+        openNewForm(t, lat, lng);
+      }
+    } else {
+      showToast('Ort nicht gefunden');
+    }
+  }catch(err){ showToast('Suche fehlgeschlagen'); }
+});
+</script>
+</body>
+</html>
