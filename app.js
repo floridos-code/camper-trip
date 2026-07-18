@@ -1,8 +1,30 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, doc,
-  updateDoc, deleteDoc, getDoc, setDoc
+  updateDoc, deleteDoc, getDoc, setDoc, enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* =========================================================
+   Offline / PWA
+   - Service Worker cached App-Shell, Kartenkacheln, Geocoding- und
+     Routing-Antworten, damit nichts doppelt heruntergeladen wird.
+   - Firestore-eigene IndexedDB-Persistenz sorgt dafür, dass Reiseorte
+     auch ganz ohne Internet sichtbar sind und Änderungen synchronisiert
+     werden, sobald wieder eine Verbindung besteht.
+========================================================= */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+function updateOnlineStatus(){
+  const banner = document.getElementById('offlineBanner');
+  if (banner) banner.style.display = navigator.onLine ? 'none' : 'block';
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+document.addEventListener('DOMContentLoaded', updateOnlineStatus);
 
 /* =========================================================
    FIREBASE-KONFIGURATION
@@ -24,6 +46,12 @@ if (isConfigured) {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   spotsCol = collection(db, "spots");
+  // Reiseorte lokal (IndexedDB) zwischenspeichern, damit die App auch
+  // ohne Internet nutzbar ist und offline erfasste Änderungen später syncen.
+  enableIndexedDbPersistence(db).catch((err) => {
+    // 'failed-precondition' = mehrere Tabs offen, 'unimplemented' = Browser ohne Unterstützung
+    console.warn('Offline-Persistenz nicht verfügbar:', err.code);
+  });
 }
 
 /* ---------- Seed-Daten ---------- */
