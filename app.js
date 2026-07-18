@@ -210,6 +210,22 @@ async function geocode(q){
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+// Manche Namen (z.B. "Vogelpark Niendorf") kennt Nominatim nicht direkt.
+// Fallback: den vorderen Teil (meist der Eigenname) weglassen und nur noch
+// Ort/Region suchen – liefert wenigstens eine ungefähre Position, statt bei
+// jedem Laden erneut erfolglos zu suchen.
+async function geocodeWithFallback(address){
+  let loc = await geocode(address);
+  if (loc) return loc;
+  const parts = address.split(',').map(p=>p.trim()).filter(Boolean);
+  if (parts.length > 1){
+    await sleep(1100);
+    loc = await geocode(parts.slice(1).join(', '));
+    if (loc) loc.approx = true;
+  }
+  return loc;
+}
+
 /* ---------- Schritt 1: Platzhalter anlegen (schnell, parallel, lückenfüllend) ---------- */
 async function seedPlaceholdersIfNeeded(){
   const seedRef = doc(db,'meta','seeded');
@@ -239,7 +255,9 @@ async function seedPlaceholdersIfNeeded(){
 let geocodingBusy = false;
 async function geocodeMissing(){
   if (geocodingBusy) return;
-  const todo = spots.filter(s=> (s.type==='route' || s.type==='activity') && (s.lat==null || s.lng==null) && s.address);
+  // geoFailed: Orte, die schon erfolglos gesucht wurden, nicht bei jedem
+  // Laden erneut versuchen – sonst wiederholt sich die Suche endlos.
+  const todo = spots.filter(s=> (s.type==='route' || s.type==='activity') && (s.lat==null || s.lng==null) && s.address && !s.geoFailed);
   if (!todo.length) return;
   geocodingBusy = true;
   const overlay = document.getElementById('seedOverlay');
@@ -248,9 +266,17 @@ async function geocodeMissing(){
   for (let i=0;i<todo.length;i++){
     const s = todo[i];
     seedText.textContent = `Orte werden gesucht … (${i+1}/${todo.length})`;
-    const loc = await geocode(s.address);
+    const loc = await geocodeWithFallback(s.address);
     if (loc){
-      try{ await updateSpot(s.id, { lat: loc.lat, lng: loc.lng, address: loc.label }); }catch(e){}
+      try{
+        await updateSpot(s.id, {
+          lat: loc.lat, lng: loc.lng,
+          address: loc.approx ? s.address : loc.label,
+          geoApprox: !!loc.approx, geoFailed: false
+        });
+      }catch(e){}
+    } else {
+      try{ await updateSpot(s.id, { geoFailed: true }); }catch(e){}
     }
     await sleep(1100);
   }
@@ -393,7 +419,7 @@ function renderList(){
         <div class="cardTop">
           <div>
             <h4>${escapeHtml(s.name||'Ohne Namen')}</h4>
-            <p class="addr">${escapeHtml(s.address||'')}</p>
+            <p class="addr">${escapeHtml(s.address||'')}${s.geoFailed && s.lat==null ? ' · ⚠️ Position nicht gefunden' : ''}</p>
           </div>
           ${catPill}
         </div>
@@ -422,7 +448,7 @@ function renderRouteList(){
       <div class="stopDot">${i===0?'🏁':i}</div>
       <div class="stopInfo">
         <h4>${escapeHtml(s.name||'Ohne Namen')}</h4>
-        <p>${label}${s.address?' · '+escapeHtml(s.address):''}</p>
+        <p>${label}${s.address?' · '+escapeHtml(s.address):''}${s.geoFailed && s.lat==null ? ' · ⚠️ nicht gefunden' : ''}</p>
       </div>
       <div class="stopBtns">
         ${s.lat!=null ? `<button onclick="openMaps(${s.lat},${s.lng})" title="Google Maps">🗺️</button>` : ''}
@@ -781,6 +807,8 @@ function renderForm(s){
       notes: document.getElementById('f_notes').value.trim(),
       lat: lat ?? null, lng: lng ?? null,
     };
+    // Wurde die Position von Hand gesetzt/gefunden, nicht mehr als "fehlgeschlagen" führen
+    if (lat != null) { data.geoFailed = false; data.geoApprox = false; }
     if (s.type === 'camper'){
       data.checkInDate = document.getElementById('f_checkinDate').value;
       data.checkInFrom = document.getElementById('f_checkinFrom').value;
