@@ -302,12 +302,24 @@ async function computeRoute(){
 /* ---------- Rendering ---------- */
 let activeTab = 'route';
 let activityFilter = 'all';
+// Steuert, welche Spot-Typen als Marker/Route auf der Karte sichtbar sind
+// (unabhängig von der Liste im Drawer, die weiterhin über die Tabs läuft).
+let mapFilters = { route:true, activity:true, camper:true };
+
+window.toggleMapFilter = (type)=>{
+  mapFilters[type] = !mapFilters[type];
+  document.querySelectorAll('.mapFilterPill').forEach(b=>{
+    if (b.dataset.type===type) b.classList.toggle('active', mapFilters[type]);
+  });
+  render();
+};
 
 function render(){
   markersLayer.clearLayers();
   if (routeLine){ map.removeLayer(routeLine); routeLine=null; }
 
   spots.forEach(s=>{
+    if (!mapFilters[s.type]) return;
     if (s.lat==null || s.lng==null) return;
     const m = L.marker([s.lat,s.lng], { icon: pinIcon(s) }).addTo(markersLayer);
     m.bindPopup(popupHtml(s));
@@ -317,11 +329,13 @@ function render(){
     });
   });
 
-  const routePts = spots.filter(s=>s.type==='route' && s.lat!=null && s.lng!=null).sort((a,b)=>(a.order??0)-(b.order??0));
-  if (routeInfo && routeInfo.line && routeInfo.line.length > 1){
-    routeLine = L.polyline(routeInfo.line, { color: COLORS.route, weight:4, opacity:.85 }).addTo(map);
-  } else if (routePts.length > 1){
-    routeLine = L.polyline(routePts.map(p=>[p.lat,p.lng]), { color: COLORS.route, weight:3, opacity:.6, dashArray:'2 8' }).addTo(map);
+  if (mapFilters.route){
+    const routePts = spots.filter(s=>s.type==='route' && s.lat!=null && s.lng!=null).sort((a,b)=>(a.order??0)-(b.order??0));
+    if (routeInfo && routeInfo.line && routeInfo.line.length > 1){
+      routeLine = L.polyline(routeInfo.line, { color: COLORS.route, weight:4, opacity:.85 }).addTo(map);
+    } else if (routePts.length > 1){
+      routeLine = L.polyline(routePts.map(p=>[p.lat,p.lng]), { color: COLORS.route, weight:3, opacity:.6, dashArray:'2 8' }).addTo(map);
+    }
   }
 
   renderList();
