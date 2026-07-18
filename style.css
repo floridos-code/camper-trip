@@ -123,6 +123,10 @@ html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF 
 .field textarea{resize:vertical;min-height:56px;}
 .row2{display:flex;gap:10px;}
 .row2 .field{flex:1;}
+.timeRange{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.timeRange input{flex:1;}
+.timeRange span{color:var(--muted);font-size:13px;}
+.timeRange .rangeUnit{white-space:nowrap;}
 .addrRow{display:flex;gap:8px;}
 .addrRow input{flex:1;}
 .addrRow button{border:none;background:var(--accent);color:#fff;border-radius:11px;padding:0 14px;font-size:13px;font-weight:600;white-space:nowrap;}

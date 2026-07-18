@@ -354,8 +354,13 @@ function renderList(){
 
     let extra = '';
     if (s.type==='camper'){
-      const nights = nightsBetween(s.checkIn, s.checkOut);
-      extra = `<p class="addr">📅 ${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)}${nights?` · ${nights} Nächte`:''}</p>`;
+      const cd = campDates(s);
+      const nights = nightsBetween(cd.ciDate, cd.coDate);
+      const ciRange = fmtTimeRange(cd.ciFrom, cd.ciTo);
+      const coRange = fmtTimeRange(cd.coFrom, cd.coTo);
+      const ciLabel = cd.ciDate ? `${fmtDateShort(cd.ciDate)}${ciRange?', '+ciRange:''}` : '–';
+      const coLabel = cd.coDate ? `${fmtDateShort(cd.coDate)}${coRange?', '+coRange:''}` : '–';
+      extra = `<p class="addr">📅 ${ciLabel} → ${coLabel}${nights?` · ${nights} Nächte`:''}</p>`;
       if (s.amenities && s.amenities.length){
         extra += `<div class="amenityTags">${s.amenities.map(id=>{
           const a = amenityMeta(id);
@@ -460,10 +465,29 @@ function fmtDate(d){
   }
   return datePart;
 }
-function toDatetimeLocal(v, defaultTime){
-  if (!v) return '';
-  if (v.length > 10) return v;
-  return v + 'T' + (defaultTime || '12:00');
+function dateOnly(v){ return v ? v.toString().slice(0,10) : ''; }
+function timeOnly(v, fallback){ return (v && v.length>10) ? v.slice(11,16) : (fallback||''); }
+function fmtDateShort(d){
+  if(!d) return '–';
+  const dt = new Date(d+'T00:00');
+  return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'});
+}
+function fmtTimeRange(from,to){
+  if (from && to) return `${from}–${to} Uhr`;
+  if (from) return `${from} Uhr`;
+  if (to) return `${to} Uhr`;
+  return '';
+}
+// Liest Check-in/Check-out konsistent aus – egal ob im neuen Format (Datum + von/bis)
+// oder noch im alten Format (ein einzelner Datum+Zeit-Wert) gespeichert.
+function campDates(s){
+  const ciDate = s.checkInDate || dateOnly(s.checkIn);
+  const ciFrom = s.checkInFrom || (s.checkInDate ? '' : timeOnly(s.checkIn));
+  const ciTo   = s.checkInTo   || '';
+  const coDate = s.checkOutDate || dateOnly(s.checkOut);
+  const coFrom = s.checkOutFrom || '';
+  const coTo   = s.checkOutTo   || (s.checkOutDate ? '' : timeOnly(s.checkOut));
+  return { ciDate, ciFrom, ciTo, coDate, coFrom, coTo };
 }
 function fmtDuration(min){
   const h = Math.floor(min/60), m = Math.round(min%60);
@@ -591,14 +615,31 @@ function renderForm(s){
       </div>`;
   }
   if (s.type === 'camper'){
+    const cd = campDates(s);
     const customChips = (s.amenities||[]).filter(id=>!AMENITIES.some(a=>a.id===id)).map(id=>{
       const label = id.startsWith('custom:') ? id.slice(7) : id;
       return `<label class="amenityChip"><input type="checkbox" value="${escapeHtml(id)}" checked> 🏷️ ${escapeHtml(label)}</label>`;
     }).join('');
     extraFields = `
-      <div class="row2">
-        <div class="field"><label>Check-in</label><input type="datetime-local" id="f_checkin" value="${toDatetimeLocal(s.checkIn,'14:00')}"></div>
-        <div class="field"><label>Check-out</label><input type="datetime-local" id="f_checkout" value="${toDatetimeLocal(s.checkOut,'11:00')}"></div>
+      <div class="field">
+        <label>Check-in</label>
+        <input type="date" id="f_checkinDate" value="${cd.ciDate||''}">
+        <div class="timeRange">
+          <input type="time" id="f_checkinFrom" value="${cd.ciFrom||'14:00'}">
+          <span>–</span>
+          <input type="time" id="f_checkinTo" value="${cd.ciTo||'18:00'}">
+          <span class="rangeUnit">Uhr</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Check-out</label>
+        <input type="date" id="f_checkoutDate" value="${cd.coDate||''}">
+        <div class="timeRange">
+          <input type="time" id="f_checkoutFrom" value="${cd.coFrom||'08:00'}">
+          <span>–</span>
+          <input type="time" id="f_checkoutTo" value="${cd.coTo||'11:00'}">
+          <span class="rangeUnit">Uhr</span>
+        </div>
       </div>
       <div class="field">
         <label>Ausstattung</label>
@@ -727,8 +768,12 @@ function renderForm(s){
       lat: lat ?? null, lng: lng ?? null,
     };
     if (s.type === 'camper'){
-      data.checkIn = document.getElementById('f_checkin').value;
-      data.checkOut = document.getElementById('f_checkout').value;
+      data.checkInDate = document.getElementById('f_checkinDate').value;
+      data.checkInFrom = document.getElementById('f_checkinFrom').value;
+      data.checkInTo = document.getElementById('f_checkinTo').value;
+      data.checkOutDate = document.getElementById('f_checkoutDate').value;
+      data.checkOutFrom = document.getElementById('f_checkoutFrom').value;
+      data.checkOutTo = document.getElementById('f_checkoutTo').value;
       data.amenities = Array.from(document.querySelectorAll('.amenityChip input:checked')).map(i=>i.value);
       data.photo = currentPhoto;
     }
