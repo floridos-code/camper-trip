@@ -4,7 +4,7 @@
    Bei jeder inhaltlichen Änderung an App-Dateien einfach VERSION erhöhen,
    dann räumt "activate" die alten Caches automatisch auf.
 ========================================================= */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `camper-shell-${VERSION}`;
 const CDN_CACHE   = `camper-cdn-${VERSION}`;
 const TILE_CACHE  = `camper-tiles-${VERSION}`;
@@ -47,7 +47,10 @@ self.addEventListener('activate', (event) => {
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
-  const network = fetch(request)
+  // "reload" umgeht den normalen HTTP-Cache des Browsers, damit die
+  // Hintergrund-Aktualisierung wirklich frische Bytes vom Server holt und
+  // nicht selbst wieder eine (evtl. veraltete) HTTP-Cache-Antwort bekommt.
+  const network = fetch(request, { cache: 'reload' })
     .then((res) => {
       if (res && res.ok) cache.put(request, res.clone());
       return res;
